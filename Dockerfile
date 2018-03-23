@@ -1,104 +1,51 @@
-FROM mhart/alpine-node:6.11.2
+FROM wernight/alpine-nginx-pagespeed:latest
 
-# Inspired by wunderkraut/alpine-nginx-pagespeed (aka ilari/alpine-nginx-pagespeed:latest) with some extra modules.
+ENV VERSION=v6.13.1 NPM_VERSION=3
 
-RUN set -x && \
-    apk --no-cache add -t .build-deps \
-        apache2-dev \
-        apr-dev \
-        apr-util-dev \
-        build-base \
-        curl \
-        icu-dev \
-        libjpeg-turbo-dev \
-        linux-headers \
-        gperf \
-        openssl-dev \
-        pcre-dev \
-        python \
-        zlib-dev && \
-    # Build libpng:
-    # This sadly requires an old version of http://www.libpng.org/pub/png/libpng.html
-    LIBPNG_VERSION=1.2.56 && \
-    cd /tmp && \
-    curl -L https://nchc.dl.sourceforge.net/project/libpng/libpng12/older-releases/1.2.56/libpng-1.2.56.tar.gz | tar -zx && \
-    cd /tmp/libpng-${LIBPNG_VERSION} && \
-    ./configure --build=$CBUILD --host=$CHOST --prefix=/usr --enable-shared --with-libpng-compat && \
-    make install V=0 && \
-    # Build PageSpeed:
-    # Check https://github.com/pagespeed/ngx_pagespeed/releases for the latest version
-    PAGESPEED_VERSION=1.11.33.3 && \
-    cd /tmp && \
-    curl -L https://dl.google.com/dl/linux/mod-pagespeed/tar/beta/mod-pagespeed-beta-${PAGESPEED_VERSION}-r0.tar.bz2 | tar -jx && \
-    curl -L https://github.com/pagespeed/ngx_pagespeed/archive/v${PAGESPEED_VERSION}-beta.tar.gz | tar -zx && \
-    cd /tmp/modpagespeed-${PAGESPEED_VERSION} && \
-    curl -L https://raw.githubusercontent.com/iler/alpine-nginx-pagespeed/master/patches/automatic_makefile.patch | patch -p1 && \
-    curl -L https://raw.githubusercontent.com/iler/alpine-nginx-pagespeed/master/patches/libpng_cflags.patch | patch -p1 && \
-    curl -L https://raw.githubusercontent.com/iler/alpine-nginx-pagespeed/master/patches/pthread_nonrecursive_np.patch | patch -p1 && \
-    curl -L https://raw.githubusercontent.com/iler/alpine-nginx-pagespeed/master/patches/rename_c_symbols.patch | patch -p1 && \
-    curl -L https://raw.githubusercontent.com/iler/alpine-nginx-pagespeed/master/patches/stack_trace_posix.patch | patch -p1 && \
-    ./generate.sh -D use_system_libs=1 -D _GLIBCXX_USE_CXX11_ABI=0 -D use_system_icu=1 && \
-    cd /tmp/modpagespeed-${PAGESPEED_VERSION}/src && \
-    make BUILDTYPE=Release CXXFLAGS=" -I/usr/include/apr-1 -I/tmp/libpng-${LIBPNG_VERSION} -fPIC -D_GLIBCXX_USE_CXX11_ABI=0" CFLAGS=" -U_FORTIFY_SOURCE -I/usr/include/apr-1 -I/tmp/libpng-${LIBPNG_VERSION} -fPIC -D_GLIBCXX_USE_CXX11_ABI=0" && \
-    cd /tmp/modpagespeed-${PAGESPEED_VERSION}/src/pagespeed/automatic/ && \
-    make psol BUILDTYPE=Release CXXFLAGS=" -I/usr/include/apr-1 -I/tmp/libpng-${LIBPNG_VERSION} -fPIC -D_GLIBCXX_USE_CXX11_ABI=0" CFLAGS=" -U_FORTIFY_SOURCE -I/usr/include/apr-1 -I/tmp/libpng-${LIBPNG_VERSION} -fPIC -D_GLIBCXX_USE_CXX11_ABI=0" && \
-    mkdir -p /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol && \
-    mkdir -p /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/lib/Release/linux/x64 && \
-    mkdir -p /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/out/Release && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/out/Release/obj /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/out/Release/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/net /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/testing /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/pagespeed /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/third_party /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/tools /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/include/ && \
-    cp -r /tmp/modpagespeed-${PAGESPEED_VERSION}/src/pagespeed/automatic/pagespeed_automatic.a /tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta/psol/lib/Release/linux/x64 && \
-    # Build Nginx with support for PageSpeed:
-    # Check http://nginx.org/en/download.html for the latest version.
-    NGINX_VERSION=1.11.13 && \
-    cd /tmp && \
-    curl -L http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar -zx && \
-    cd /tmp/nginx-${NGINX_VERSION} && \
-    LD_LIBRARY_PATH=/tmp/modpagespeed-${PAGESPEED_VERSION}/usr/lib ./configure --with-ipv6 \
-        --prefix=/var/lib/nginx \
-        --sbin-path=/usr/sbin \
-        --modules-path=/usr/lib/nginx \
-        --with-http_ssl_module \
-        --with-http_gzip_static_module \
-        --with-file-aio \
-        --with-http_v2_module \
-        --without-http_autoindex_module \
-        --without-http_browser_module \
-        --without-http_geo_module \
-        --without-http_map_module \
-        --without-http_memcached_module \
-        --without-http_userid_module \
-        --without-mail_pop3_module \
-        --without-mail_imap_module \
-        --without-mail_smtp_module \
-        --without-http_split_clients_module \
-        --without-http_scgi_module \
-        --without-http_referer_module \
-        --without-http_upstream_ip_hash_module \
-        --prefix=/etc/nginx \
-        --conf-path=/etc/nginx/nginx.conf \
-        --http-log-path=/var/log/nginx/access.log \
-        --error-log-path=/var/log/nginx/error.log \
-        --pid-path=/var/run/nginx.pid \
-        --add-module=/tmp/ngx_pagespeed-${PAGESPEED_VERSION}-beta \
-        --with-cc-opt="-fPIC -I /usr/include/apr-1" \
-        --with-ld-opt="-luuid -lapr-1 -laprutil-1 -licudata -licuuc -L/tmp/modpagespeed-${PAGESPEED_VERSION}/usr/lib -lpng12 -lturbojpeg -ljpeg" && \
-    make install --silent && \
-    # Clean-up:
-    cd && \
-    apk del .build-deps && \
-    rm -rf /tmp/* && \
-    # forward request and error logs to docker log collector
-    ln -sf /dev/stdout /var/log/nginx/access.log && \
-    ln -sf /dev/stderr /var/log/nginx/error.log && \
-    # Make PageSpeed cache writabl:
-    mkdir -p /var/cache/ngx_pagespeed && \
-    chmod -R o+wr /var/cache/ngx_pagespeed
+# For base builds
+# ENV CONFIG_FLAGS="--fully-static --without-npm" DEL_PKGS="libstdc++" RM_DIRS=/usr/include
 
-EXPOSE 80 443
-
-CMD ["nginx", "-g", "daemon off;"]
+RUN apk add --no-cache curl make gcc g++ python linux-headers binutils-gold gnupg libstdc++ && \
+  for server in pgp.mit.edu keyserver.pgp.com ha.pool.sks-keyservers.net; do \
+    gpg --keyserver $server --recv-keys \
+      94AE36675C464D64BAFA68DD7434390BDBE9B9C5 \
+      FD3A5288F042B6850C66B31F09FE44734EB7990E \
+      71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
+      DD8F2338BAE7501E3DD5AC78C273792F7D83545D \
+      C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
+      B9AE9905FFD7803F25714661B63B535A4C206CA9 \
+      56730D5401028683275BD23C23EFEFE93C4CFFFE \
+      77984A986EBC2AA786BC0F66B01FBB92821C587A && break; \
+  done && \
+  curl -sfSLO https://nodejs.org/dist/${VERSION}/node-${VERSION}.tar.xz && \
+  curl -sfSL https://nodejs.org/dist/${VERSION}/SHASUMS256.txt.asc | gpg --batch --decrypt | \
+    grep " node-${VERSION}.tar.xz\$" | sha256sum -c | grep ': OK$' && \
+  tar -xf node-${VERSION}.tar.xz && \
+  cd node-${VERSION} && \
+  ./configure --prefix=/usr ${CONFIG_FLAGS} && \
+  make -j$(getconf _NPROCESSORS_ONLN) && \
+  make install && \
+  cd / && \
+  if [ -z "$CONFIG_FLAGS" ]; then \
+    if [ -n "$NPM_VERSION" ]; then \
+      npm install -g npm@${NPM_VERSION}; \
+    fi; \
+    find /usr/lib/node_modules/npm -name test -o -name .bin -type d | xargs rm -rf; \
+    if [ -n "$YARN_VERSION" ]; then \
+      for server in pgp.mit.edu keyserver.pgp.com ha.pool.sks-keyservers.net; do \
+        gpg --keyserver $server --recv-keys \
+          6A010C5166006599AA17F08146C2130DFD2497F5 && break; \
+      done && \
+      curl -sfSL -O https://yarnpkg.com/${YARN_VERSION}.tar.gz -O https://yarnpkg.com/${YARN_VERSION}.tar.gz.asc && \
+      gpg --batch --verify ${YARN_VERSION}.tar.gz.asc ${YARN_VERSION}.tar.gz && \
+      mkdir /usr/local/share/yarn && \
+      tar -xf ${YARN_VERSION}.tar.gz -C /usr/local/share/yarn --strip 1 && \
+      ln -s /usr/local/share/yarn/bin/yarn /usr/local/bin/ && \
+      ln -s /usr/local/share/yarn/bin/yarnpkg /usr/local/bin/ && \
+      rm ${YARN_VERSION}.tar.gz*; \
+    fi; \
+  fi && \
+  apk del curl make gcc g++ python linux-headers binutils-gold gnupg ${DEL_PKGS} && \
+  rm -rf ${RM_DIRS} /node-${VERSION}* /usr/share/man /tmp/* /var/cache/apk/* \
+    /root/.npm /root/.node-gyp /root/.gnupg /usr/lib/node_modules/npm/man \
+    /usr/lib/node_modules/npm/doc /usr/lib/node_modules/npm/html /usr/lib/node_modules/npm/scripts
