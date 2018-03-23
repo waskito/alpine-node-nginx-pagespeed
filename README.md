@@ -11,4 +11,4 @@ Configuration is very similar to the official [Nginx image](https://hub.docker.c
 
 Note
 ------
-This is experimental repository.
+This is experimental repository only.
