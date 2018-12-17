@@ -1,6 +1,6 @@
 FROM wernight/alpine-nginx-pagespeed:latest
 
-ENV VERSION=v6.13.1 NPM_VERSION=3
+ENV VERSION=v8.12.0 NPM_VERSION=6.5.0
 
 # For base builds
 # ENV CONFIG_FLAGS="--fully-static --without-npm" DEL_PKGS="libstdc++" RM_DIRS=/usr/include
